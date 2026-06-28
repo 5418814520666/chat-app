@@ -22,6 +22,9 @@ let CLIENT_DIST = join(__dirname, 'client-dist')
 if (!existsSync(CLIENT_DIST)) {
   CLIENT_DIST = join(__dirname, '..', 'client', 'dist')
 }
+if (existsSync(CLIENT_DIST)) {
+  app.use(express.static(CLIENT_DIST))
+}
 
 const UPLOADS_DIR = join(__dirname, 'uploads')
 const MAX_FILE_SIZE = 50 * 1024 * 1024

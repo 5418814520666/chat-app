@@ -30,6 +30,11 @@ if [ "$1" = "--persist" ] || [ "$1" = "-p" ]; then
     git clone "$REPO_URL" "$APP_DIR" 2>&1
   fi
 
+  cd "$APP_DIR/client"
+  log "构建前端..."
+  npm install --silent 2>&1
+  npx vite build --outDir ../server/client-dist --emptyOutDir 2>&1
+
   cd "$APP_DIR/server"
   npm install --production --silent
   mkdir -p uploads
@@ -114,6 +119,11 @@ else
   log "克隆仓库..."
   git clone "$REPO_URL" "$APP_DIR" 2>&1
 fi
+
+cd "$APP_DIR/client"
+log "构建前端..."
+npm install --silent 2>&1
+npx vite build --outDir ../server/client-dist 2>&1
 
 cd "$APP_DIR/server"
 

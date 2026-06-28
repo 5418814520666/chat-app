@@ -178,3 +178,4 @@
 # Uploaded files
 server/uploads/*
 !server/uploads/.gitkeep
+server/client-dist/

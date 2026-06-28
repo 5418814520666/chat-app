@@ -18,6 +18,11 @@ const httpServer = createServer(app)
 app.use(cors())
 app.use(express.json())
 
+let CLIENT_DIST = join(__dirname, 'client-dist')
+if (!existsSync(CLIENT_DIST)) {
+  CLIENT_DIST = join(__dirname, '..', 'client', 'dist')
+}
+
 const UPLOADS_DIR = join(__dirname, 'uploads')
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
@@ -91,6 +96,12 @@ app.get('/api/rooms', (_req, res) => {
   }
   res.json(roomList)
 })
+
+if (existsSync(CLIENT_DIST)) {
+  app.get('*', (_req, res) => {
+    res.sendFile(join(CLIENT_DIST, 'index.html'))
+  })
+}
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`)

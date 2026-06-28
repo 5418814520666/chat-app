@@ -69,7 +69,7 @@ SVCEOF
     log "  systemctl stop chat-app     停止"
     log "  journalctl -u chat-app -f   查看日志"
     log "==================================="
-    log "  服务已就绪: http://8.138.224.117:${PORT}"
+    log "  服务已就绪: https://chat.yangchen.skin"
     log "  崩溃自动重启: 是"
     log "  开机自启: 是"
     log "==================================="
@@ -91,7 +91,7 @@ if [ "$1" = "--one-liner" ]; then
   mkdir -p uploads
   nohup node index.js > /var/log/chat-app.log 2>&1 &
   sleep 1
-  curl -s "http://localhost:${PORT}/api/rooms" >/dev/null 2>&1 && log "OK - http://8.138.224.117:${PORT}" || log "WARN: check /var/log/chat-app.log"
+  curl -s "http://localhost:${PORT}/api/rooms" >/dev/null 2>&1 && log "OK - https://chat.yangchen.skin" || log "WARN: check /var/log/chat-app.log"
   exit 0
 fi
 
@@ -139,7 +139,7 @@ echo "$PID" > /var/run/chat-app.pid
 sleep 2
 if kill -0 "$PID" 2>/dev/null; then
   log "部署成功 PID=$PID"
-  log "地址: http://8.138.224.117:${PORT}"
+  log "地址: https://chat.yangchen.skin"
   log "日志: /var/log/chat-app.log"
 else
   log "启动失败，查看: /var/log/chat-app.log"

@@ -27,7 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var fileChooserLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>
 
     companion object {
-        private const val CHAT_URL = "http://8.138.224.117:3001"
+        private const val CHAT_URL = "https://chat.yangchen.skin/"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

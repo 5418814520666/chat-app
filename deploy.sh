@@ -74,8 +74,8 @@ if kill -0 "$SERVER_PID" 2>/dev/null; then
 
   log_info "==================================="
   log_info "  后端服务已就绪"
-  log_info "  地址: http://8.138.224.117:$PORT"
-  log_info "  房间列表: http://8.138.224.117:$PORT/api/rooms"
+  log_info "  地址: https://chat.yangchen.skin"
+  log_info "  房间列表: https://chat.yangchen.skin/api/rooms"
   log_info "  文件目录: $UPLOADS_DIR"
   log_info "  进程 PID: $SERVER_PID"
   log_info "==================================="

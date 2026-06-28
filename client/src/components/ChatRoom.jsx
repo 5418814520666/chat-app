@@ -105,12 +105,14 @@ export default function ChatRoom({ roomId, username, token }) {
 
     s.on('hang-up', () => { cleanupCall() })
 
-    s.on('webrtc-offer', async ({ from, offer }) => {
+    s.on('webrtc-offer', async ({ from, offer, username }) => {
       const pc = createPeerConnection(s, from)
       peerRef.current = pc
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
+
       const stream = await getLocalStream()
       if (stream) stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
       s.emit('webrtc-answer', { to: from, answer })
@@ -152,30 +154,53 @@ export default function ChatRoom({ roomId, username, token }) {
     pc.onicecandidate = (e) => {
       if (e.candidate) s.emit('webrtc-ice-candidate', { to: targetId, candidate: e.candidate })
     }
-    pc.ontrack = (e) => {
-      if (e.streams?.[0]) setRemoteStream(e.streams[0])
+    pc.addEventListener('track', (e) => {
+      if (e.streams && e.streams[0] && e.streams[0].getTracks().length > 0) {
+        setRemoteStream(e.streams[0])
+      }
+    })
+    pc.onconnectionstatechange = () => {
+      console.log('WebRTC state:', pc.connectionState)
     }
     return pc
   }, [])
 
   const startCall = useCallback(async (targetUser) => {
     setIsCaller(true)
-    setActiveCall({ peerId: targetUser.sid || targetUser.id, username: targetUser.username })
-    socket.emit('call-user', { to: targetUser.sid || targetUser.id })
-  }, [socket])
+    const targetId = targetUser.sid || targetUser.id
+    setActiveCall({ peerId: targetId, username: targetUser.username })
+    setShowVideo(true)
+
+    const pc = createPeerConnection(socket, targetId)
+    peerRef.current = pc
+
+    const stream = await getLocalStream()
+    if (stream) {
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+    }
+
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    socket.emit('webrtc-offer', { to: targetId, offer })
+  }, [socket, getLocalStream, createPeerConnection])
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return
     socket.emit('call-accepted', { to: incomingCall.from })
     setActiveCall({ peerId: incomingCall.from, username: incomingCall.username })
     setShowVideo(true)
-    setIncomingCall(null)
+
     const stream = await getLocalStream()
+    if (!stream) { setIncomingCall(null); return }
+
     const pc = createPeerConnection(socket, incomingCall.from)
     peerRef.current = pc
-    if (stream) stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
+
+    setIncomingCall(null)
     socket.emit('webrtc-offer', { to: incomingCall.from, offer })
   }, [incomingCall, socket, getLocalStream, createPeerConnection])
 

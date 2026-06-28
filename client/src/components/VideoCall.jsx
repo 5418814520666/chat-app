@@ -1,31 +1,41 @@
 import { useState, useEffect, useRef } from 'react'
 
-export default function VideoCall({
-  localStream,
-  remoteStream,
-  isCaller,
-  peerUsername,
-  onHangUp,
-  onClose,
-  onToggleMute
-}) {
+export default function VideoCall({ localStream, remoteStream, isCaller, peerUsername, onHangUp, onClose, onToggleMute }) {
   const localVideoRef = useRef(null)
   const remoteVideoRef = useRef(null)
+  const [videoMuted, setVideoMuted] = useState(false)
+  const [audioMuted, setAudioMuted] = useState(false)
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream
+      localVideoRef.current.play().catch(() => {})
     }
   }, [localStream])
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream
+      remoteVideoRef.current.play().catch(() => {})
     }
   }, [remoteStream])
 
-  const [videoMuted, setVideoMuted] = useState(false)
-  const [audioMuted, setAudioMuted] = useState(false)
+  useEffect(() => {
+    if (!remoteStream) return
+    const video = remoteVideoRef.current
+    if (!video) return
+    video.srcObject = remoteStream
+    const play = () => video.play().catch(() => {})
+    play()
+    remoteStream.getTracks().forEach((t) => {
+      t.addEventListener('unmute', play)
+    })
+    return () => {
+      remoteStream.getTracks().forEach((t) => {
+        t.removeEventListener('unmute', play)
+      })
+    }
+  }, [remoteStream])
 
   return (
     <div className="video-call-panel">
@@ -57,20 +67,12 @@ export default function VideoCall({
         <button
           className={`video-ctrl-btn mute-btn ${audioMuted ? 'muted' : ''}`}
           onClick={() => { onToggleMute('audio'); setAudioMuted(!audioMuted) }}
-          title={audioMuted ? '取消静音' : '静音'}
-        >
-          {audioMuted ? 'M' : 'A'}
-        </button>
+        >{audioMuted ? 'M' : 'A'}</button>
         <button
           className={`video-ctrl-btn mute-btn ${videoMuted ? 'muted' : ''}`}
           onClick={() => { onToggleMute('video'); setVideoMuted(!videoMuted) }}
-          title={videoMuted ? '开启摄像头' : '关闭摄像头'}
-        >
-          {videoMuted ? 'V' : 'C'}
-        </button>
-        <button className="video-ctrl-btn hangup-btn" onClick={onHangUp} title="挂断">
-          T
-        </button>
+        >{videoMuted ? 'V' : 'C'}</button>
+        <button className="video-ctrl-btn hangup-btn" onClick={onHangUp}>T</button>
       </div>
     </div>
   )

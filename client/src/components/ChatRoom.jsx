@@ -11,6 +11,7 @@ export default function ChatRoom({ roomId, username, onLeave }) {
   const [messages, setMessages] = useState([])
   const [typingUsers, setTypingUsers] = useState(new Map())
   const [showVideo, setShowVideo] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [incomingCall, setIncomingCall] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
   const [isCaller, setIsCaller] = useState(false)
@@ -254,7 +255,10 @@ export default function ChatRoom({ roomId, username, onLeave }) {
 
   return (
     <div className="chat-container">
-      <div className="sidebar">
+      <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
+        onClick={() => setSidebarOpen(false)} />
+
+      <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h2>Chat App</h2>
           <span className="room-name">#{roomId}</span>
@@ -262,13 +266,16 @@ export default function ChatRoom({ roomId, username, onLeave }) {
         <UserList
           users={otherUsers}
           currentUsername={username}
-          onCall={startCall}
+          onCall={(user) => { startCall(user); setSidebarOpen(false) }}
           activeCall={activeCall}
         />
       </div>
 
       <div className="main-area">
         <div className="chat-header">
+          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
+            &#9776;
+          </button>
           <h3>#{roomId}</h3>
           <button className="leave-btn" onClick={() => { onLeave(); cleanupCall() }}>离开</button>
         </div>

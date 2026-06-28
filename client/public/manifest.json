@@ -1,0 +1,24 @@
+{
+  "name": "Chat App - 视频聊天",
+  "short_name": "ChatApp",
+  "description": "实时视频聊天、文字消息和文件共享应用",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a2e",
+  "theme_color": "#e94560",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["social", "communication"],
+  "lang": "zh-CN"
+}

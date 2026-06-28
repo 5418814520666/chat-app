@@ -1,0 +1,19 @@
+[Unit]
+Description=Chat App Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chat-app/server
+Environment=PORT=3001
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/chat-app/server/index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/chat-app.log
+StandardError=append:/var/log/chat-app.log
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -9,6 +9,77 @@ NC='\033[0m'
 
 log() { echo -e "${GREEN}[$(date +%H:%M:%S)]${NC} $*"; }
 
+# ---------- systemd 持久化部署 ----------
+if [ "$1" = "--persist" ] || [ "$1" = "-p" ]; then
+  log "持久化部署模式 (systemd)"
+
+  if ! command -v node &>/dev/null; then
+    log "安装 Node.js..."
+    export DEBIAN_FRONTEND=noninteractive
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
+    apt-get install -y nodejs >/dev/null 2>&1
+  fi
+
+  log "Node.js $(node -v)"
+
+  if [ -d "$APP_DIR/.git" ]; then
+    log "更新代码..."
+    cd "$APP_DIR" && git pull --ff-only 2>&1
+  else
+    log "克隆仓库..."
+    git clone "$REPO_URL" "$APP_DIR" 2>&1
+  fi
+
+  cd "$APP_DIR/server"
+  npm install --production --silent
+  mkdir -p uploads
+
+  # Install systemd service
+  cat > /etc/systemd/system/chat-app.service << 'SVCEOF'
+[Unit]
+Description=Chat App Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/chat-app/server
+Environment=PORT=3001
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/chat-app/server/index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/chat-app.log
+StandardError=append:/var/log/chat-app.log
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  systemctl daemon-reload
+  systemctl enable chat-app
+  systemctl restart chat-app
+
+  sleep 2
+  if systemctl is-active --quiet chat-app; then
+    log "持久化部署成功"
+    log "  systemctl status chat-app   查看状态"
+    log "  systemctl restart chat-app  重启"
+    log "  systemctl stop chat-app     停止"
+    log "  journalctl -u chat-app -f   查看日志"
+    log "==================================="
+    log "  服务已就绪: http://8.138.224.117:${PORT}"
+    log "  崩溃自动重启: 是"
+    log "  开机自启: 是"
+    log "==================================="
+  else
+    log "服务启动失败，查看: journalctl -u chat-app -n 50"
+    exit 1
+  fi
+  exit 0
+fi
+
 # ---------- one-liner mode ----------
 if [ "$1" = "--one-liner" ]; then
   command -v node &>/dev/null || { log "ERROR: Node.js required"; exit 1; }
@@ -24,7 +95,7 @@ if [ "$1" = "--one-liner" ]; then
   exit 0
 fi
 
-# ---------- full deploy mode ----------
+# ---------- full deploy mode (nohup) ----------
 log "Chat App 服务端部署"
 
 if ! command -v node &>/dev/null; then

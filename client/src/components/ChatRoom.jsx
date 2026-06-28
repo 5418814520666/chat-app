@@ -5,28 +5,42 @@ import ChatInput from './ChatInput'
 import UserList from './UserList'
 import VideoCall from './VideoCall'
 
-export default function ChatRoom({ roomId, username, onLeave }) {
+export default function ChatRoom({ roomId, username, token }) {
   const [socket, setSocket] = useState(null)
   const [users, setUsers] = useState([])
   const [messages, setMessages] = useState([])
   const [typingUsers, setTypingUsers] = useState(new Map())
   const [showVideo, setShowVideo] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [incomingCall, setIncomingCall] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
   const [isCaller, setIsCaller] = useState(false)
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
   const peerRef = useRef(null)
   const typingTimers = useRef(new Map())
+  const roomRef = useRef(roomId)
 
   useEffect(() => {
+    if (roomRef.current === roomId && socket) {
+      return
+    }
+    roomRef.current = roomId
+
+    setHasMore(true)
+
     const s = io('/', {
-      transports: ['websocket', 'polling']
+      transports: ['websocket', 'polling'],
+      auth: { token }
     })
 
     s.on('connect', () => {
-      s.emit('join-room', { roomId, username })
+      s.emit('join-room', { roomId })
+    })
+
+    s.on('connect_error', (err) => {
+      console.error('Connection error:', err.message)
     })
 
     s.on('user-list', setUsers)
@@ -38,7 +52,7 @@ export default function ChatRoom({ roomId, username, onLeave }) {
     })
 
     s.on('message-history', (msgs) => {
-      setMessages(msgs)
+      setMessages(msgs.reverse())
     })
 
     s.on('new-message', (msg) => {
@@ -55,9 +69,7 @@ export default function ChatRoom({ roomId, username, onLeave }) {
         next.set(userId, username)
         return next
       })
-      if (typingTimers.current.has(userId)) {
-        clearTimeout(typingTimers.current.get(userId))
-      }
+      if (typingTimers.current.has(userId)) clearTimeout(typingTimers.current.get(userId))
       typingTimers.current.set(userId, setTimeout(() => {
         setTypingUsers((prev) => {
           const next = new Map(prev)
@@ -91,36 +103,26 @@ export default function ChatRoom({ roomId, username, onLeave }) {
       cleanupCall()
     })
 
-    s.on('hang-up', () => {
-      cleanupCall()
-    })
+    s.on('hang-up', () => { cleanupCall() })
 
     s.on('webrtc-offer', async ({ from, offer }) => {
       const pc = createPeerConnection(s, from)
       peerRef.current = pc
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
       const stream = await getLocalStream()
-      if (stream) {
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream))
-      }
+      if (stream) stream.getTracks().forEach((t) => pc.addTrack(t, stream))
       const answer = await pc.createAnswer()
       await pc.setLocalDescription(answer)
       s.emit('webrtc-answer', { to: from, answer })
     })
 
     s.on('webrtc-answer', async ({ answer }) => {
-      if (peerRef.current) {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer))
-      }
+      if (peerRef.current) await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer))
     })
 
     s.on('webrtc-ice-candidate', async ({ candidate }) => {
       if (peerRef.current) {
-        try {
-          await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate))
-        } catch (e) {
-          // ignore
-        }
+        try { await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate)) } catch {}
       }
     })
 
@@ -130,20 +132,14 @@ export default function ChatRoom({ roomId, username, onLeave }) {
       cleanupCall()
       s.disconnect()
     }
-  }, [roomId, username])
+  }, [roomId, token])
 
   const getLocalStream = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      })
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       setLocalStream(stream)
       return stream
-    } catch (err) {
-      console.error('Failed to get media:', err)
-      return null
-    }
+    } catch { return null }
   }, [])
 
   const createPeerConnection = useCallback((s, targetId) => {
@@ -153,26 +149,19 @@ export default function ChatRoom({ roomId, username, onLeave }) {
         { urls: 'stun:stun1.l.google.com:19302' }
       ]
     })
-
     pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        s.emit('webrtc-ice-candidate', { to: targetId, candidate: e.candidate })
-      }
+      if (e.candidate) s.emit('webrtc-ice-candidate', { to: targetId, candidate: e.candidate })
     }
-
     pc.ontrack = (e) => {
-      if (e.streams && e.streams[0]) {
-        setRemoteStream(e.streams[0])
-      }
+      if (e.streams?.[0]) setRemoteStream(e.streams[0])
     }
-
     return pc
   }, [])
 
   const startCall = useCallback(async (targetUser) => {
     setIsCaller(true)
-    setActiveCall({ peerId: targetUser.id, username: targetUser.username })
-    socket.emit('call-user', { to: targetUser.id })
+    setActiveCall({ peerId: targetUser.sid || targetUser.id, username: targetUser.username })
+    socket.emit('call-user', { to: targetUser.sid || targetUser.id })
   }, [socket])
 
   const acceptCall = useCallback(async () => {
@@ -181,13 +170,10 @@ export default function ChatRoom({ roomId, username, onLeave }) {
     setActiveCall({ peerId: incomingCall.from, username: incomingCall.username })
     setShowVideo(true)
     setIncomingCall(null)
-
     const stream = await getLocalStream()
     const pc = createPeerConnection(socket, incomingCall.from)
     peerRef.current = pc
-    if (stream) {
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream))
-    }
+    if (stream) stream.getTracks().forEach((t) => pc.addTrack(t, stream))
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     socket.emit('webrtc-offer', { to: incomingCall.from, offer })
@@ -200,21 +186,13 @@ export default function ChatRoom({ roomId, username, onLeave }) {
   }, [incomingCall, socket])
 
   const hangUp = useCallback(() => {
-    if (activeCall) {
-      socket.emit('hang-up', { to: activeCall.peerId })
-    }
+    if (activeCall) socket.emit('hang-up', { to: activeCall.peerId })
     cleanupCall()
   }, [activeCall, socket])
 
   const cleanupCall = useCallback(() => {
-    if (peerRef.current) {
-      peerRef.current.close()
-      peerRef.current = null
-    }
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop())
-      setLocalStream(null)
-    }
+    if (peerRef.current) { peerRef.current.close(); peerRef.current = null }
+    if (localStream) { localStream.getTracks().forEach((t) => t.stop()); setLocalStream(null) }
     setRemoteStream(null)
     setActiveCall(null)
     setShowVideo(false)
@@ -223,13 +201,7 @@ export default function ChatRoom({ roomId, username, onLeave }) {
   }, [localStream])
 
   const toggleMute = useCallback((kind) => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => {
-        if (t.kind === kind) {
-          t.enabled = !t.enabled
-        }
-      })
-    }
+    localStream?.getTracks().forEach((t) => { if (t.kind === kind) t.enabled = !t.enabled })
   }, [localStream])
 
   const sendMessage = useCallback((text) => {
@@ -244,70 +216,49 @@ export default function ChatRoom({ roomId, username, onLeave }) {
 
   const emitTyping = useCallback((isTyping) => {
     if (!socket) return
-    if (isTyping) {
-      socket.emit('typing', { roomId })
-    } else {
-      socket.emit('stop-typing', { roomId })
-    }
+    socket.emit(isTyping ? 'typing' : 'stop-typing', { roomId })
   }, [socket, roomId])
 
-  const otherUsers = users.filter((u) => u.id !== socket?.id)
+  const loadMore = useCallback(async () => {
+    if (!hasMore || messages.length === 0) return
+    const oldest = messages[0]
+    const res = await fetch(`/api/messages/${roomId}?before=${oldest.timestamp}&limit=50`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (res.ok) {
+      const older = await res.json()
+      if (older.length === 0) { setHasMore(false); return }
+      setMessages((prev) => [...older, ...prev])
+    }
+  }, [roomId, token, hasMore, messages])
+
+  const otherUsers = users.filter((u) => u.id !== socket?.data?.userId)
 
   return (
-    <div className="chat-container">
-      <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
-        onClick={() => setSidebarOpen(false)} />
-
+    <div className="chat-container" style={{ height: 'calc(100vh - 76px)' }}>
+      <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
       <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h2>Chat App</h2>
           <span className="room-name">#{roomId}</span>
         </div>
-        <UserList
-          users={otherUsers}
-          currentUsername={username}
-          onCall={(user) => { startCall(user); setSidebarOpen(false) }}
-          activeCall={activeCall}
-        />
+        <UserList users={otherUsers} currentUsername={username} onCall={(user) => { startCall(user); setSidebarOpen(false) }} activeCall={activeCall} />
       </div>
-
       <div className="main-area">
         <div className="chat-header">
-          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>
-            &#9776;
-          </button>
+          <button className="mobile-menu-btn" onClick={() => setSidebarOpen(true)}>&#9776;</button>
           <h3>#{roomId}</h3>
-          <button className="leave-btn" onClick={() => { onLeave(); cleanupCall() }}>离开</button>
         </div>
-        <MessageList
-          messages={messages}
-          currentUserId={socket?.id}
-        />
+        <MessageList messages={messages} currentUserId={socket?.data?.userId?.toString()} onLoadMore={loadMore} hasMore={hasMore} />
         <div className="typing-indicator">
-          {typingUsers.size > 0 &&
-            Array.from(typingUsers.values()).join(', ') + ' 正在输入...'}
+          {typingUsers.size > 0 && Array.from(typingUsers.values()).join(', ') + ' 正在输入...'}
         </div>
-        <ChatInput
-          onSend={sendMessage}
-          onFileSend={sendFileMessage}
-          onTyping={emitTyping}
-          username={username}
-          roomId={roomId}
-        />
+        <ChatInput onSend={sendMessage} onFileSend={sendFileMessage} onTyping={emitTyping} username={username} roomId={roomId} token={token} />
       </div>
-
       {(showVideo || activeCall) && (
-        <VideoCall
-          localStream={localStream}
-          remoteStream={remoteStream}
-          isCaller={isCaller}
-          peerUsername={activeCall?.username}
-          onHangUp={hangUp}
-          onClose={() => setShowVideo(false)}
-          onToggleMute={toggleMute}
-        />
+        <VideoCall localStream={localStream} remoteStream={remoteStream} isCaller={isCaller}
+          peerUsername={activeCall?.username} onHangUp={hangUp} onClose={() => setShowVideo(false)} onToggleMute={toggleMute} />
       )}
-
       {incomingCall && (
         <div className="incoming-call-overlay">
           <div className="incoming-call-card">

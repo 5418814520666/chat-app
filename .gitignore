@@ -179,3 +179,4 @@
 server/uploads/*
 !server/uploads/.gitkeep
 server/client-dist/
+server/data.db*

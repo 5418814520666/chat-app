@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 
-export default function ChatInput({ onSend, onFileSend, onTyping, username, roomId }) {
+export default function ChatInput({ onSend, onFileSend, onTyping, username, roomId, token }) {
   const [text, setText] = useState('')
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
@@ -11,29 +11,18 @@ export default function ChatInput({ onSend, onFileSend, onTyping, username, room
     onSend(text)
     setText('')
     onTyping(false)
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-      typingTimeoutRef.current = null
-    }
+    if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = null }
   }, [text, onSend, onTyping])
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
   const handleChange = (e) => {
     setText(e.target.value)
     onTyping(true)
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-    typingTimeoutRef.current = setTimeout(() => {
-      onTyping(false)
-      typingTimeoutRef.current = null
-    }, 2000)
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+    typingTimeoutRef.current = setTimeout(() => { onTyping(false); typingTimeoutRef.current = null }, 2000)
   }
 
   const handleFileChange = async (e) => {
@@ -49,6 +38,7 @@ export default function ChatInput({ onSend, onFileSend, onTyping, username, room
 
       const res = await fetch('/api/upload', {
         method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
         body: formData
       })
 
@@ -60,39 +50,20 @@ export default function ChatInput({ onSend, onFileSend, onTyping, username, room
       console.error('File upload error:', err)
     } finally {
       setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
   return (
     <div className="chat-input-area">
       <div className="input-row">
-        <textarea
-          value={text}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-          rows={1}
-        />
+        <textarea value={text} onChange={handleChange} onKeyDown={handleKeyDown}
+          placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows={1} />
         <label className="file-upload-btn" title="发送文件">
           {uploading ? '...' : '+'}
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileChange}
-            accept="*"
-          />
+          <input ref={fileInputRef} type="file" onChange={handleFileChange} accept="*" />
         </label>
-        <button
-          className="send-btn"
-          onClick={handleSend}
-          disabled={!text.trim() || uploading}
-          title="发送"
-        >
-          &gt;
-        </button>
+        <button className="send-btn" onClick={handleSend} disabled={!text.trim() || uploading} title="发送">&gt;</button>
       </div>
     </div>
   )

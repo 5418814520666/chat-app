@@ -49,6 +49,31 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_id, timestamp);
   CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
   CREATE INDEX IF NOT EXISTS idx_files_room ON files(room_id);
+
+  CREATE TABLE IF NOT EXISTS friend_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_user_id INTEGER NOT NULL,
+    to_user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (from_user_id) REFERENCES users(id),
+    FOREIGN KEY (to_user_id) REFERENCES users(id),
+    UNIQUE(from_user_id, to_user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS friendships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user1_id INTEGER NOT NULL,
+    user2_id INTEGER NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch()),
+    FOREIGN KEY (user1_id) REFERENCES users(id),
+    FOREIGN KEY (user2_id) REFERENCES users(id),
+    UNIQUE(user1_id, user2_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_friend_requests_to ON friend_requests(to_user_id, status);
+  CREATE INDEX IF NOT EXISTS idx_friendships_u1 ON friendships(user1_id);
+  CREATE INDEX IF NOT EXISTS idx_friendships_u2 ON friendships(user2_id);
 `)
 
 export default db

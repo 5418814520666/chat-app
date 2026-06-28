@@ -72,13 +72,26 @@ export default function MessageList({ messages, currentUserId, onLoadMore, hasMo
               {!isOwn && <div className="msg-sender">{msg.sender}</div>}
               {msg.type === 'text' && <div className="msg-content">{msg.content}</div>}
               {msg.type === 'file' && msg.file && (
-                <div className="file-msg">
-                  <span className="file-icon">{getFileIcon(msg.file.type)}</span>
-                  <div className="file-info">
-                    <div className="file-name" title={msg.file.name}>{msg.file.name}</div>
-                    <div className="file-size">{formatSize(msg.file.size)}</div>
+                <div className="msg-file-area">
+                  {msg.file.type && msg.file.type.startsWith('image/') && (
+                    <a href={msg.file.url} target="_blank" rel="noopener noreferrer">
+                      <img src={msg.file.url} alt={msg.file.name}
+                        className="media-preview media-image"
+                        loading="lazy" />
+                    </a>
+                  )}
+                  {msg.file.type && msg.file.type.startsWith('video/') && (
+                    <video src={msg.file.url} controls preload="metadata"
+                      className="media-preview media-video" />
+                  )}
+                  <div className="file-msg">
+                    <span className="file-icon">{getFileIcon(msg.file.type)}</span>
+                    <div className="file-info">
+                      <div className="file-name" title={msg.file.name}>{msg.file.name}</div>
+                      <div className="file-size">{formatSize(msg.file.size)}</div>
+                    </div>
+                    <a href={msg.file.url} download={msg.file.name} className="file-download">下载</a>
                   </div>
-                  <a href={msg.file.url} download={msg.file.name} className="file-download">下载</a>
                 </div>
               )}
               <div className="msg-time">{formatTime(msg.timestamp)}</div>

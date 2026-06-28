@@ -160,10 +160,143 @@ app.get('/api/messages/:roomId', authMiddleware, (req, res) => {
   res.json(messages)
 })
 
+function getPrivateRoomId(userId1, userId2) {
+  const a = Number(userId1), b = Number(userId2)
+  return `private_${Math.min(a, b)}_${Math.max(a, b)}`
+}
+
+app.get('/api/users/search', authMiddleware, (req, res) => {
+  const q = req.query.q
+  if (!q || q.length < 2) return res.json([])
+  const rows = db.prepare(
+    `SELECT id, username FROM users WHERE username LIKE ? AND id != ? LIMIT 10`
+  ).all(`%${q}%`, req.user.id)
+  res.json(rows.map(r => ({ id: r.id, username: r.username })))
+})
+
+app.get('/api/friends', authMiddleware, (req, res) => {
+  const rows = db.prepare(
+    `SELECT u.id, u.username FROM friendships f
+     JOIN users u ON (CASE WHEN f.user1_id = ? THEN f.user2_id ELSE f.user1_id END) = u.id
+     WHERE f.user1_id = ? OR f.user2_id = ?`
+  ).all(req.user.id, req.user.id, req.user.id)
+  res.json(rows)
+})
+
+app.get('/api/friend-requests', authMiddleware, (req, res) => {
+  const incoming = db.prepare(
+    `SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at, u.username as from_username
+     FROM friend_requests fr JOIN users u ON fr.from_user_id = u.id
+     WHERE fr.to_user_id = ? AND fr.status = 'pending'`
+  ).all(req.user.id)
+
+  const outgoing = db.prepare(
+    `SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at, u.username as to_username
+     FROM friend_requests fr JOIN users u ON fr.to_user_id = u.id
+     WHERE fr.from_user_id = ?`
+  ).all(req.user.id)
+
+  res.json({ incoming, outgoing })
+})
+
+app.post('/api/friend-request', authMiddleware, (req, res) => {
+  const { toUserId } = req.body
+  if (!toUserId) return res.status(400).json({ error: '请指定用户' })
+
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(toUserId)
+  if (!target) return res.status(404).json({ error: '用户不存在' })
+  if (toUserId == req.user.id) return res.status(400).json({ error: '不能添加自己为好友' })
+
+  const existing = db.prepare(
+    'SELECT id FROM friend_requests WHERE from_user_id = ? AND to_user_id = ?'
+  ).get(req.user.id, toUserId)
+  if (existing) return res.status(409).json({ error: '已发送过好友请求' })
+
+  const isFriend = db.prepare(
+    'SELECT id FROM friendships WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)'
+  ).get(req.user.id, toUserId, toUserId, req.user.id)
+  if (isFriend) return res.status(409).json({ error: '已经是好友' })
+
+  db.prepare('INSERT INTO friend_requests (from_user_id, to_user_id) VALUES (?, ?)').run(req.user.id, toUserId)
+
+  const targetSocketId = userSockets.get(Number(toUserId))
+  if (targetSocketId) {
+    io.to(targetSocketId).emit('friend-request-received', {
+      fromUserId: req.user.id,
+      fromUsername: req.user.username
+    })
+  }
+
+  res.json({ ok: true })
+})
+
+app.post('/api/friend-accept', authMiddleware, (req, res) => {
+  const { requestId, fromUserId } = req.body
+  const request = db.prepare('SELECT * FROM friend_requests WHERE id = ? AND to_user_id = ? AND status = ?').get(requestId, req.user.id, 'pending')
+  if (!request) return res.status(404).json({ error: '请求不存在' })
+
+  db.prepare('UPDATE friend_requests SET status = ? WHERE id = ?').run('accepted', requestId)
+
+  const a = Math.min(request.from_user_id, request.to_user_id)
+  const b = Math.max(request.from_user_id, request.to_user_id)
+  db.prepare('INSERT OR IGNORE INTO friendships (user1_id, user2_id) VALUES (?, ?)').run(a, b)
+
+  const friendSocketId = userSockets.get(Number(request.from_user_id))
+  if (friendSocketId) {
+    io.to(friendSocketId).emit('friend-request-accepted', {
+      byUserId: req.user.id,
+      byUsername: req.user.username
+    })
+  }
+
+  res.json({ ok: true })
+})
+
+app.post('/api/friend-reject', authMiddleware, (req, res) => {
+  const { requestId } = req.body
+  db.prepare('UPDATE friend_requests SET status = ? WHERE id = ? AND to_user_id = ?').run('rejected', requestId, req.user.id)
+  res.json({ ok: true })
+})
+
+app.get('/api/private-messages/:otherUserId', authMiddleware, (req, res) => {
+  const roomId = getPrivateRoomId(req.user.id, req.params.otherUserId)
+  const limit = parseInt(req.query.limit) || 100
+  const before = parseInt(req.query.before) || Date.now()
+
+  const isFriend = db.prepare(
+    'SELECT id FROM friendships WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)'
+  ).get(req.user.id, req.params.otherUserId, req.params.otherUserId, req.user.id)
+  if (!isFriend) return res.status(403).json({ error: '不是好友' })
+
+  const rows = db.prepare(
+    `SELECT * FROM messages WHERE room_id = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?`
+  ).all(roomId, before, limit)
+
+  const messages = rows.reverse().map((r) => ({
+    id: r.id.toString(),
+    type: r.type,
+    content: r.content,
+    sender: r.username,
+    senderId: r.user_id.toString(),
+    timestamp: r.timestamp,
+    file: r.type === 'file' ? {
+      id: r.id.toString(),
+      name: r.file_name,
+      size: r.file_size,
+      type: r.file_type,
+      url: r.file_url
+    } : undefined
+  }))
+
+  res.json(messages)
+})
+
 const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
   maxHttpBufferSize: 1e8
 })
+
+const userSockets = new Map()
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token
@@ -180,8 +313,14 @@ io.use((socket, next) => {
   }
 })
 
+function notifyFriend(io, userSockets, targetUserId, event, data) {
+  const sid = userSockets.get(Number(targetUserId))
+  if (sid) io.to(sid).emit(event, data)
+}
+
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.data.username} (${socket.id})`)
+  userSockets.set(socket.data.userId, socket.id)
 
   socket.on('join-room', ({ roomId }) => {
     socket.join(roomId)
@@ -288,8 +427,11 @@ io.on('connection', (socket) => {
     socket.to(to).emit('webrtc-ice-candidate', { from: socket.id, candidate })
   })
 
-  socket.on('call-user', ({ to }) => {
-    socket.to(to).emit('incoming-call', { from: socket.id, username: socket.data.username })
+  socket.on('call-user', ({ to, toUserId }) => {
+    const targetSid = toUserId ? userSockets.get(Number(toUserId)) : to
+    if (targetSid) {
+      socket.to(targetSid).emit('incoming-call', { from: socket.id, username: socket.data.username, userId: socket.data.userId })
+    }
   })
 
   socket.on('call-accepted', ({ to }) => {
@@ -313,6 +455,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
+    userSockets.delete(socket.data.userId)
     const roomId = socket.data.roomId
     if (roomId) {
       const sockets = io.sockets.adapter.rooms.get(roomId)

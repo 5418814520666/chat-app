@@ -347,6 +347,77 @@ body {
   font-size: 16px;
 }
 
+.mute-toggle-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.mute-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mute-toggle-btn.muted {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.call-input-btn {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  color: var(--success);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.call-input-btn:hover {
+  border-color: var(--success);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.call-menu {
+  margin-top: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.call-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.call-menu-item:hover {
+  background: var(--bg-tertiary);
+}
+
 .leave-btn {
   padding: 6px 16px;
   border: 1px solid var(--accent);

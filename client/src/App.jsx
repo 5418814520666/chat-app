@@ -13,6 +13,17 @@ function getStoredAuth() {
   } catch { return null }
 }
 
+function getStoredMutes() {
+  try {
+    const data = localStorage.getItem('chat_mutes')
+    return data ? new Set(JSON.parse(data)) : new Set()
+  } catch { return new Set() }
+}
+
+function saveMutes(mutes) {
+  localStorage.setItem('chat_mutes', JSON.stringify([...mutes]))
+}
+
 export default function App() {
   const [auth, setAuth] = useState(getStoredAuth)
   const [mode, setMode] = useState('login')
@@ -27,6 +38,10 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sidebarTab, setSidebarTab] = useState('room')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const [mutedRooms, setMutedRooms] = useState(getStoredMutes)
+  const [privateFriend, setPrivateFriend] = useState(null)
+  const privateRoomRef = useRef(null)
 
   const [incomingCall, setIncomingCall] = useState(null)
   const [activeCall, setActiveCall] = useState(null)
@@ -273,10 +288,30 @@ export default function App() {
     } catch {}
   }
 
+  const toggleRoomMute = useCallback((roomId) => {
+    setMutedRooms((prev) => {
+      const next = new Set(prev)
+      if (next.has(roomId)) next.delete(roomId)
+      else next.add(roomId)
+      saveMutes(next)
+      return next
+    })
+  }, [])
+
+  const callFromInput = useCallback((targetUser) => {
+    const s = socketRef.current
+    if (!s) return
+    s.emit('call-user', { toUserId: targetUser.id })
+    startCall(targetUser)
+  }, [startCall])
+
   const enterPrivateChat = (friend) => {
     const a = Math.min(auth.user.id, friend.id)
     const b = Math.max(auth.user.id, friend.id)
-    setActiveRoom(`private_${a}_${b}`)
+    const room = `private_${a}_${b}`
+    privateRoomRef.current = room
+    setPrivateFriend(friend)
+    setActiveRoom(room)
     setSidebarOpen(false)
   }
 
@@ -412,7 +447,10 @@ export default function App() {
           <ChatRoom roomId={activeRoom} username={auth.user.username} token={token}
             socketRef={socketRef} localStream={localStream} remoteStream={remoteStream}
             isCaller={isCaller} activeCall={activeCall} showVideo={showVideo}
-            onStartCall={startCall} onHangUp={hangUp} onToggleMute={toggleMute}
+            mutedRooms={mutedRooms} onToggleRoomMute={toggleRoomMute}
+            privateFriend={privateFriend} users={[]}
+            onStartCall={startCall} onCallFromInput={callFromInput}
+            onHangUp={hangUp} onToggleMute={toggleMute}
             onCloseVideo={() => setShowVideo(false)} />
         </div>
       </div>

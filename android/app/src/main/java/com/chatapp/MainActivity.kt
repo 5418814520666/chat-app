@@ -22,13 +22,12 @@ import com.chatapp.viewmodel.ChatViewModel
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: ChatViewModel by viewModels()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
             ChatAppTheme {
+                val viewModel: ChatViewModel by viewModels()
                 val authState by viewModel.authState.collectAsStateWithLifecycle()
                 val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
                 val error by viewModel.loginError.collectAsStateWithLifecycle()
@@ -96,75 +95,61 @@ fun MainApp() {
     val currentRoom by viewModel.currentRoom.collectAsStateWithLifecycle()
     val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
-    val authState by viewModel.authState.collectAsStateWithLifecycle()
-    val tokenRef = remember { mutableStateOf("") }
-    val userIdRef = remember { mutableStateOf("") }
-    val usernameRef = remember { mutableStateOf("") }
 
-    var showSidebar by remember { mutableStateOf(false) }
+    val currentUserId = viewModel.userId.toString()
+    val currentUsername = viewModel.username
 
     val roomItems = remember(rooms) {
         rooms.map { RoomItem(it.room_id, "#${it.room_id}") }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Sidebar overlay
-        if (showSidebar) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
-                    .then(Modifier.toString().let { Modifier })
-            ) {
-                // Empty click to dismiss - handled below
+    val roomName = if (currentRoom.startsWith("private_")) "@私聊" else "#$currentRoom"
+
+    Row(modifier = Modifier.fillMaxSize()) {
+        // Sidebar
+        Surface(
+            modifier = Modifier.width(220.dp).fillMaxHeight(),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp
+        ) {
+            Column {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Chat App",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                RoomListPanel(
+                    rooms = roomItems,
+                    friends = friends,
+                    friendRequests = friendRequestCount,
+                    currentRoomId = currentRoom,
+                    onRoomClick = { viewModel.joinRoom(it) },
+                    onTabFriends = { viewModel.loadFriends() }
+                )
             }
         }
 
-        Row(modifier = Modifier.fillMaxSize()) {
-            // Desktop sidebar
-            if (!showSidebar) {
-                Surface(
-                    modifier = Modifier.width(220.dp).fillMaxHeight(),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp
-                ) {
-                    Column {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            Text("Chat App", color = MaterialTheme.colorScheme.primary, fontSize = 18.sp)
-                            Spacer(Modifier.weight(1f))
-                        }
-                        RoomListPanel(
-                            rooms = roomItems,
-                            friends = friends,
-                            friendRequests = friendRequestCount,
-                            currentRoomId = currentRoom,
-                            onRoomClick = { viewModel.joinRoom(it) },
-                            onTabFriends = { viewModel.loadFriends() }
-                        )
-                    }
-                }
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                ChatScreen(
-                    roomId = currentRoom,
-                    roomName = if (currentRoom.startsWith("private_")) "@私聊" else "#$currentRoom",
-                    messages = messages,
-                    users = users,
-                    currentUserId = userIdRef.value,
-                    currentUsername = usernameRef.value,
-                    typingUsers = typingUsers,
-                    hasMore = hasMore,
-                    isLoadingMore = isLoadingMore,
-                    onSendMessage = viewModel::sendMessage,
-                    onSendFile = { _, _, _ -> },
-                    onLoadMore = viewModel::loadMore,
-                    onTyping = viewModel::sendTyping,
-                    onCallUser = viewModel::callUser,
-                    isPrivate = currentRoom.startsWith("private_")
-                )
-            }
+        // Chat area
+        Column(modifier = Modifier.weight(1f)) {
+            ChatScreen(
+                roomId = currentRoom,
+                roomName = roomName,
+                messages = messages,
+                users = users,
+                currentUserId = currentUserId,
+                currentUsername = currentUsername,
+                typingUsers = typingUsers,
+                hasMore = hasMore,
+                isLoadingMore = isLoadingMore,
+                onSendMessage = viewModel::sendMessage,
+                onSendFile = { _, _, _ -> },
+                onLoadMore = viewModel::loadMore,
+                onTyping = viewModel::sendTyping,
+                onCallUser = viewModel::callUser,
+                isPrivate = currentRoom.startsWith("private_")
+            )
         }
     }
 }

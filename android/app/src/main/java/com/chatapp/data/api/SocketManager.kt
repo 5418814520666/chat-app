@@ -1,5 +1,6 @@
 package com.chatapp.data.api
 
+import android.util.Log
 import com.chatapp.BuildConfig
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -7,6 +8,7 @@ import io.socket.emitter.Emitter
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
+import java.util.concurrent.Executors
 
 class SocketManager {
 
@@ -14,48 +16,69 @@ class SocketManager {
     private var currentToken: String? = null
     private var currentUserId: String? = null
     private var listeners = mutableMapOf<String, MutableList<Emitter.Listener>>()
+    private val connectExecutor = Executors.newSingleThreadExecutor()
 
     val isConnected: Boolean get() = socket?.connected() == true
 
-    fun connect(token: String, userId: String, username: String) {
-        disconnect()
-        currentToken = token
-        currentUserId = userId
+    fun connect(token: String, userId: String, username: String, onDone: (() -> Unit)? = null) {
+        connectExecutor.execute {
+            try {
+                disconnect()
+                currentToken = token
+                currentUserId = userId
 
-        val opts = IO.Options().apply {
-            query = "token=$token"
-            timeout = 15000
-            reconnection = true
-            reconnectionAttempts = Int.MAX_VALUE
-            reconnectionDelay = 1000
-            reconnectionDelayMax = 5000
-            transports = arrayOf("websocket")
-        }
+                val opts = IO.Options().apply {
+                    this.query = "token=$token"
+                    timeout = 15000
+                    reconnection = true
+                    reconnectionAttempts = Int.MAX_VALUE
+                    reconnectionDelay = 1000
+                    reconnectionDelayMax = 5000
+                    transports = arrayOf("websocket")
+                }
 
-        socket = IO.socket(URI.create(BuildConfig.SOCKET_URL), opts).apply {
-            on(Socket.EVENT_CONNECT) {
-                emit("register", JSONObject().apply {
-                    put("userId", userId)
-                    put("username", username)
-                })
+                val s = IO.socket(URI.create(BuildConfig.SOCKET_URL), opts).apply {
+                    on(Socket.EVENT_CONNECT) {
+                        Log.d("Socket", "Connected")
+                        emit("register", JSONObject().apply {
+                            put("userId", userId)
+                            put("username", username)
+                        })
+                    }
+
+                    on(Socket.EVENT_DISCONNECT) {
+                        Log.d("Socket", "Disconnected")
+                    }
+
+                    on(Socket.EVENT_CONNECT_ERROR) { args ->
+                        Log.e("Socket", "Connect error: ${args.firstOrNull()}")
+                    }
+                }
+
+                // Re-register saved listeners before connecting
+                for ((event, eventListeners) in listeners) {
+                    eventListeners.forEach { s.on(event, it) }
+                }
+
+                s.connect()
+                socket = s
+                onDone?.invoke()
+            } catch (e: Exception) {
+                Log.e("Socket", "Connection failed: ${e.message}", e)
             }
-
-            on(Socket.EVENT_DISCONNECT) {}
-            on(Socket.EVENT_CONNECT_ERROR) {}
-
-            connect()
-        }
-
-        // Re-register listeners
-        for ((event, eventListeners) in listeners) {
-            eventListeners.forEach { socket?.on(event, it) }
         }
     }
 
     fun disconnect() {
-        socket?.disconnect()
-        socket?.off()
-        socket = null
+        connectExecutor.execute {
+            try {
+                socket?.disconnect()
+                socket?.off()
+                socket = null
+            } catch (e: Exception) {
+                Log.e("Socket", "Disconnect error: ${e.message}")
+            }
+        }
     }
 
     fun on(event: String, listener: Emitter.Listener) {
@@ -99,7 +122,6 @@ class SocketManager {
     }
 
     fun callUser(toUserId: String) {
-        emit("call-user", JSONObject().put("toUserId", toUserId))
         emit("call-user", JSONObject().put("toUserId", toUserId))
     }
 

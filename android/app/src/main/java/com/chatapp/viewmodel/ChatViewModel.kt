@@ -11,19 +11,21 @@ import com.chatapp.data.db.toEntity
 import com.chatapp.data.db.toMessage
 import com.chatapp.data.model.*
 import com.chatapp.data.prefs.AuthManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val authManager = AuthManager(application)
     val socketManager = SocketManager()
     private val db by lazy {
-        androidx.room.Room.databaseBuilder(application, ChatDatabase::class.java, "chat.db").build()
+        androidx.room.Room.databaseBuilder(application, ChatDatabase::class.java, "chat.db")
+            .fallbackToDestructiveMigration()
+            .build()
     }
     private val api = ApiClient.apiService
 
@@ -66,30 +68,37 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private var token: String = ""
-    private var userId: Long = 0
-    private var username: String = ""
-    private var typingTimeout: kotlinx.coroutines.Job? = null
+    var token: String = ""
+        private set
+    var userId: Long = 0
+        private set
+    var username: String = ""
+        private set
 
     init {
         checkExistingAuth()
-        ApiClient.setTokenProvider { authManager.tokenFlow.firstOrNull() }
     }
 
     private fun checkExistingAuth() {
         viewModelScope.launch {
-            val savedToken = authManager.tokenFlow.firstOrNull()
-            val savedUserId = authManager.userIdFlow.firstOrNull()
-            val savedUsername = authManager.usernameFlow.firstOrNull()
+            try {
+                val savedToken = authManager.tokenFlow.firstOrNull()
+                val savedUserId = authManager.userIdFlow.firstOrNull()
+                val savedUsername = authManager.usernameFlow.firstOrNull()
 
-            if (savedToken != null && savedUserId != null && savedUsername != null) {
-                token = savedToken
-                userId = savedUserId.toLong()
-                username = savedUsername
-                _authState.value = AuthState.LoggedIn
-                connectSocket()
-                loadInitialData()
-            } else {
+                if (savedToken != null && savedUserId != null && savedUsername != null) {
+                    token = savedToken
+                    userId = savedUserId.toLong()
+                    username = savedUsername
+                    ApiClient.setToken(token)
+                    _authState.value = AuthState.LoggedIn
+                    connectSocket()
+                    loadInitialData()
+                } else {
+                    _authState.value = AuthState.LoggedOut
+                }
+            } catch (e: Exception) {
+                Log.e("ChatVM", "Auth check failed: ${e.message}")
                 _authState.value = AuthState.LoggedOut
             }
         }
@@ -100,12 +109,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _loginError.value = null
             try {
-                val res = api.login(AuthRequest(username, password))
+                val res = withContext(Dispatchers.IO) {
+                    api.login(AuthRequest(username, password))
+                }
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     token = body.token
                     userId = body.user.id
                     this@ChatViewModel.username = body.user.username
+                    ApiClient.setToken(token)
                     authManager.saveAuth(token, userId, username)
                     _authState.value = AuthState.LoggedIn
                     connectSocket()
@@ -114,6 +126,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _loginError.value = parseError(res.errorBody()?.string())
                 }
             } catch (e: Exception) {
+                Log.e("ChatVM", "Login failed: ${e.message}", e)
                 _loginError.value = "连接失败: ${e.localizedMessage}"
             } finally {
                 _isLoading.value = false
@@ -126,12 +139,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _loginError.value = null
             try {
-                val res = api.register(AuthRequest(username, password))
+                val res = withContext(Dispatchers.IO) {
+                    api.register(AuthRequest(username, password))
+                }
                 if (res.isSuccessful && res.body() != null) {
                     val body = res.body()!!
                     token = body.token
                     userId = body.user.id
                     this@ChatViewModel.username = body.user.username
+                    ApiClient.setToken(token)
                     authManager.saveAuth(token, userId, username)
                     _authState.value = AuthState.LoggedIn
                     connectSocket()
@@ -140,6 +156,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _loginError.value = parseError(res.errorBody()?.string())
                 }
             } catch (e: Exception) {
+                Log.e("ChatVM", "Register failed: ${e.message}", e)
                 _loginError.value = "连接失败: ${e.localizedMessage}"
             } finally {
                 _isLoading.value = false
@@ -149,8 +166,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() {
         viewModelScope.launch {
-            socketManager.disconnect()
-            authManager.clear()
+            try {
+                socketManager.disconnect()
+                authManager.clear()
+                ApiClient.setToken(null)
+            } catch (_: Exception) {}
             token = ""
             userId = 0
             username = ""
@@ -162,7 +182,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun connectSocket() {
-        socketManager.connect(token, userId.toString(), username)
+        socketManager.connect(token, userId.toString(), username) {
+            // Socket connected, now join default room
+            joinRoom("general")
+        }
         setupSocketListeners()
     }
 
@@ -203,10 +226,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     list.add(parseMessage(arr.getJSONObject(i)))
                 }
                 _messages.value = list
-                // Cache to database
                 viewModelScope.launch {
-                    val roomId = _currentRoom.value
-                    list.forEach { db.messageDao().insert(it.toEntity(roomId)) }
+                    try {
+                        val roomId = _currentRoom.value
+                        list.forEach { db.messageDao().insert(it.toEntity(roomId)) }
+                    } catch (_: Exception) {}
                 }
             }
         }
@@ -216,7 +240,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val msg = parseMessage(args[0] as JSONObject)
                 _messages.value = _messages.value + msg
                 viewModelScope.launch {
-                    db.messageDao().insert(msg.toEntity(_currentRoom.value))
+                    try {
+                        db.messageDao().insert(msg.toEntity(_currentRoom.value))
+                    } catch (_: Exception) {}
                 }
             }
         }
@@ -252,8 +278,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        socketManager.on("call-incoming") { /* TODO: handle calls */ }
-        socketManager.on("call-signal") { /* TODO: handle WebRTC */ }
+        socketManager.on("call-incoming") { /* TODO */ }
+        socketManager.on("call-signal") { /* TODO */ }
         socketManager.on("friend-request-received") {
             _friendRequests.value = _friendRequests.value + 1
         }
@@ -266,10 +292,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         socketManager.joinRoom(roomId)
 
         viewModelScope.launch {
-            val cached = db.messageDao().getMessages(roomId)
-            if (cached.isNotEmpty()) {
-                _messages.value = cached.map { it.toMessage() }
-            }
+            try {
+                val cached = db.messageDao().getMessages(roomId)
+                if (cached.isNotEmpty()) {
+                    _messages.value = cached.map { it.toMessage() }
+                }
+            } catch (_: Exception) {}
         }
     }
 
@@ -279,14 +307,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendTyping(isTyping: Boolean) {
         socketManager.sendTyping(_currentRoom.value, isTyping)
-
-        if (isTyping) {
-            typingTimeout?.cancel()
-            typingTimeout = viewModelScope.launch {
-                kotlinx.coroutines.delay(2000)
-                socketManager.sendTyping(_currentRoom.value, false)
-            }
-        }
     }
 
     fun loadMore() {
@@ -298,15 +318,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val roomId = _currentRoom.value
                 val oldest = msgs.first()
-                val res = if (roomId.startsWith("private_")) {
-                    val otherId = roomId.removePrefix("private_").split("_")
-                        .firstOrNull { it != userId.toString() }?.toLongOrNull() ?: return@launch
-                    api.getPrivateMessages(otherId, 50, oldest.timestamp)
-                } else {
-                    api.getMessages(roomId, 50, oldest.timestamp)
+                val res = withContext(Dispatchers.IO) {
+                    if (roomId.startsWith("private_")) {
+                        val parts = roomId.removePrefix("private_").split("_")
+                        val otherId = parts.firstOrNull { it != userId.toString() }?.toLongOrNull()
+                        if (otherId != null) {
+                            api.getPrivateMessages(otherId, 50, oldest.timestamp)
+                        } else {
+                            return@withContext null
+                        }
+                    } else {
+                        api.getMessages(roomId, 50, oldest.timestamp)
+                    }
                 }
 
-                if (res.isSuccessful && res.body() != null) {
+                if (res != null && res.isSuccessful && res.body() != null) {
                     val older = res.body()!!
                     if (older.isEmpty()) {
                         _hasMore.value = false
@@ -325,7 +351,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun loadRooms() {
         viewModelScope.launch {
             try {
-                val res = api.getRooms()
+                val res = withContext(Dispatchers.IO) { api.getRooms() }
                 if (res.isSuccessful && res.body() != null) {
                     _rooms.value = res.body()!!
                 }
@@ -338,12 +364,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun loadFriends() {
         viewModelScope.launch {
             try {
-                val res = api.getFriends()
+                val res = withContext(Dispatchers.IO) { api.getFriends() }
                 if (res.isSuccessful && res.body() != null) {
                     _friends.value = res.body()!!
                 }
 
-                val reqRes = api.getFriendRequests()
+                val reqRes = withContext(Dispatchers.IO) { api.getFriendRequests() }
                 if (reqRes.isSuccessful && reqRes.body() != null) {
                     _friendRequests.value = reqRes.body()!!.incoming.size
                 }
@@ -360,7 +386,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadInitialData() {
         loadRooms()
         loadFriends()
-        joinRoom("general")
     }
 
     private fun parseMessage(obj: JSONObject): Message {
@@ -386,7 +411,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (errorBody == null) return "未知错误"
         return try {
             JSONObject(errorBody).optString("error", "请求失败")
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "请求失败"
         }
     }

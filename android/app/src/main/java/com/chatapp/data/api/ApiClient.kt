@@ -1,8 +1,6 @@
 package com.chatapp.data.api
 
 import com.chatapp.BuildConfig
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -12,26 +10,24 @@ import java.util.concurrent.TimeUnit
 
 object ApiClient {
 
-    private var tokenProvider: (suspend () -> String?)? = null
+    @Volatile
+    private var authToken: String? = null
 
-    fun setTokenProvider(provider: suspend () -> String?) {
-        tokenProvider = provider
+    fun setToken(token: String?) {
+        authToken = token
     }
 
     private val authInterceptor = Interceptor { chain ->
-        val token = runBlocking { tokenProvider?.invoke() }
-        val request = if (token != null) {
+        val request = authToken?.let { token ->
             chain.request().newBuilder()
                 .addHeader("Authorization", "Bearer $token")
                 .build()
-        } else {
-            chain.request()
-        }
+        } ?: chain.request()
         chain.proceed(request)
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = HttpLoggingInterceptor.Level.BASIC
     }
 
     private val okHttpClient = OkHttpClient.Builder()

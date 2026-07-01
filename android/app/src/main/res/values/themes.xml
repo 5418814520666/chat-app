@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.ChatApp" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
+    <style name="Theme.ChatApp" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@color/primary_dark</item>
         <item name="android:navigationBarColor">@color/primary_dark</item>
-    </style>
-
-    <style name="Theme.ChatApp.Splash" parent="Theme.ChatApp">
         <item name="android:windowBackground">@color/primary_dark</item>
     </style>
 </resources>

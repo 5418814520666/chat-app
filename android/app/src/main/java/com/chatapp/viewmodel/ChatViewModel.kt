@@ -92,8 +92,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     username = savedUsername
                     ApiClient.setToken(token)
                     _authState.value = AuthState.LoggedIn
-                    connectSocket()
-                    loadInitialData()
+                    // connectSocket()
+                    // loadInitialData()
+                    android.util.Log.d("ChatVM", "Login SUCCESS userId=$userId")
                 } else {
                     _authState.value = AuthState.LoggedOut
                 }
@@ -120,8 +121,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     ApiClient.setToken(token)
                     authManager.saveAuth(token, userId, username)
                     _authState.value = AuthState.LoggedIn
-                    connectSocket()
-                    loadInitialData()
+                    // connectSocket()
+                    // loadInitialData()
+                    android.util.Log.d("ChatVM", "Login SUCCESS userId=$userId")
                 } else {
                     _loginError.value = parseError(res.errorBody()?.string())
                 }
@@ -150,8 +152,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     ApiClient.setToken(token)
                     authManager.saveAuth(token, userId, username)
                     _authState.value = AuthState.LoggedIn
-                    connectSocket()
-                    loadInitialData()
+                    // connectSocket()
+                    // loadInitialData()
+                    android.util.Log.d("ChatVM", "Login SUCCESS userId=$userId")
                 } else {
                     _loginError.value = parseError(res.errorBody()?.string())
                 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,70 +87,19 @@ fun AuthFlow(
 @Composable
 fun MainApp() {
     val viewModel = androidx.lifecycle.viewmodel.compose.viewModel<ChatViewModel>()
-    val rooms by viewModel.rooms.collectAsStateWithLifecycle()
-    val friends by viewModel.friends.collectAsStateWithLifecycle()
-    val friendRequestCount by viewModel.friendRequestCount.collectAsStateWithLifecycle()
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
-    val users by viewModel.users.collectAsStateWithLifecycle()
-    val typingUsers by viewModel.typingUsers.collectAsStateWithLifecycle()
-    val currentRoom by viewModel.currentRoom.collectAsStateWithLifecycle()
-    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
-    val isLoadingMore by viewModel.isLoadingMore.collectAsStateWithLifecycle()
 
-    val currentUserId = viewModel.userId.toString()
-    val currentUsername = viewModel.username
-
-    val roomItems = remember(rooms) {
-        rooms.map { RoomItem(it.room_id, "#${it.room_id}") }
-    }
-
-    val roomName = if (currentRoom.startsWith("private_")) "@私聊" else "#$currentRoom"
-
-    Row(modifier = Modifier.fillMaxSize()) {
-        // Sidebar
-        Surface(
-            modifier = Modifier.width(220.dp).fillMaxHeight(),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp
-        ) {
-            Column {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "Chat App",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                RoomListPanel(
-                    rooms = roomItems,
-                    friends = friends,
-                    friendRequests = friendRequestCount,
-                    currentRoomId = currentRoom,
-                    onRoomClick = { viewModel.joinRoom(it) },
-                    onTabFriends = { viewModel.loadFriends() }
-                )
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("登录成功", fontSize = 24.sp, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("用户: ${viewModel.username}", color = MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = { viewModel.logout() }) {
+                Text("退出登录")
             }
-        }
-
-        // Chat area
-        Column(modifier = Modifier.weight(1f)) {
-            ChatScreen(
-                roomId = currentRoom,
-                roomName = roomName,
-                messages = messages,
-                users = users,
-                currentUserId = currentUserId,
-                currentUsername = currentUsername,
-                typingUsers = typingUsers,
-                hasMore = hasMore,
-                isLoadingMore = isLoadingMore,
-                onSendMessage = viewModel::sendMessage,
-                onSendFile = { _, _, _ -> },
-                onLoadMore = viewModel::loadMore,
-                onTyping = viewModel::sendTyping,
-                onCallUser = viewModel::callUser,
-                isPrivate = currentRoom.startsWith("private_")
-            )
         }
     }
 }

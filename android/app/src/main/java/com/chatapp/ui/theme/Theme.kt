@@ -1,42 +1,31 @@
 package com.chatapp.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val DarkBackground = Color(0xFF1A1A2E)
-val DarkSurface = Color(0xFF16213E)
-val DarkSurfaceVariant = Color(0xFF0F3460)
-val Accent = Color(0xFFE94560)
-val AccentLight = Color(0xFFFF6B6B)
-val Success = Color(0xFF4CAF50)
-val Warning = Color(0xFFFFC107)
-val TextPrimary = Color(0xFFEEEEEE)
-val TextSecondary = Color(0xFFAAAAAA)
-val BorderColor = Color(0xFF2A2A4A)
-val InputBg = Color(0xFF242450)
+val WxGreen = Color(0xFF07C160)
+val WxDarkBg = Color(0xFF191919)
+val WxDarkSurface = Color(0xFF2C2C2C)
+val WxGray = Color(0xFF999999)
+val WxBubbleSelf = Color(0xFF95EC69)
+val WxBubbleOther = Color(0xFFFFFFFF)
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Accent,
+private val DarkScheme = darkColorScheme(
+    primary = WxGreen,
     onPrimary = Color.White,
-    secondary = AccentLight,
-    background = DarkBackground,
-    surface = DarkSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onBackground = TextPrimary,
-    onSurface = TextPrimary,
-    onSurfaceVariant = TextSecondary,
-    outline = BorderColor,
+    secondary = WxGreen,
+    background = WxDarkBg,
+    surface = WxDarkSurface,
+    onBackground = Color.White,
+    onSurface = Color.White,
+    onSurfaceVariant = WxGray,
+    outline = Color(0xFF444444),
     error = Color(0xFFFF5252),
     onError = Color.White
 )
 
 @Composable
-fun ChatAppTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = DarkColorScheme,
-        typography = Typography(),
-        content = content
-    )
+fun ChatTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = DarkScheme, content = content)
 }

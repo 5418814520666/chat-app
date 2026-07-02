@@ -9,29 +9,29 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "auth_prefs")
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "auth")
 
-class AuthManager(private val context: Context) {
+class AuthManager(private val ctx: Context) {
 
     companion object {
-        private val KEY_TOKEN = stringPreferencesKey("jwt_token")
-        private val KEY_USER_ID = stringPreferencesKey("user_id")
-        private val KEY_USERNAME = stringPreferencesKey("username")
+        private val K_TOKEN = stringPreferencesKey("token")
+        private val K_UID = stringPreferencesKey("uid")
+        private val K_UNAME = stringPreferencesKey("uname")
     }
 
-    val tokenFlow: Flow<String?> = context.dataStore.data.map { it[KEY_TOKEN] }
-    val userIdFlow: Flow<String?> = context.dataStore.data.map { it[KEY_USER_ID] }
-    val usernameFlow: Flow<String?> = context.dataStore.data.map { it[KEY_USERNAME] }
+    val token: Flow<String?> = ctx.dataStore.data.map { it[K_TOKEN] }
+    val uid: Flow<String?> = ctx.dataStore.data.map { it[K_UID] }
+    val uname: Flow<String?> = ctx.dataStore.data.map { it[K_UNAME] }
 
-    suspend fun saveAuth(token: String, userId: Long, username: String) {
-        context.dataStore.edit {
-            it[KEY_TOKEN] = token
-            it[KEY_USER_ID] = userId.toString()
-            it[KEY_USERNAME] = username
+    suspend fun save(t: String, id: Long, name: String) {
+        ctx.dataStore.edit {
+            it[K_TOKEN] = t
+            it[K_UID] = id.toString()
+            it[K_UNAME] = name
         }
     }
 
     suspend fun clear() {
-        context.dataStore.edit { it.clear() }
+        ctx.dataStore.edit { it.clear() }
     }
 }

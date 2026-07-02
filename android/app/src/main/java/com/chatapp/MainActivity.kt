@@ -7,6 +7,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -16,80 +17,92 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.chatapp.data.model.User
 import com.chatapp.ui.chat.*
 import com.chatapp.ui.login.LoginScreen
 import com.chatapp.ui.login.RegisterScreen
-import com.chatapp.ui.theme.ChatAppTheme
+import com.chatapp.ui.theme.ChatTheme
+import com.chatapp.ui.theme.WxDarkBg
+import com.chatapp.ui.theme.WxDarkSurface
+import com.chatapp.ui.theme.WxGreen
 import com.chatapp.viewmodel.ChatViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            ChatAppTheme {
+            ChatTheme {
                 val vm: ChatViewModel by viewModels()
-                when (val s = vm.authState.collectAsStateWithLifecycle().value) {
-                    is ChatViewModel.AuthState.Loading -> {}
-                    is ChatViewModel.AuthState.LoggedOut -> LoginGate(vm)
-                    is ChatViewModel.AuthState.LoggedIn -> WechatApp(vm)
+                val auth = vm.authState.collectAsStateWithLifecycle().value
+
+                when (auth) {
+                    is ChatViewModel.AuthState.Checking -> Box(Modifier.fillMaxSize().background(WxDarkBg))
+                    is ChatViewModel.AuthState.LoggedOut -> AuthGate(vm)
+                    is ChatViewModel.AuthState.LoggedIn -> MainApp(vm)
                 }
             }
         }
     }
 }
 
+// ---- Auth Gate (Login / Register) ----
 @Composable
-fun LoginGate(vm: ChatViewModel) {
-    val isLoading by vm.isLoading.collectAsStateWithLifecycle()
-    val error by vm.loginError.collectAsStateWithLifecycle()
-    var isRegister by remember { mutableStateOf(false) }
-    if (isRegister) {
-        RegisterScreen(vm::register, { isRegister = false; vm.clearError() }, error, isLoading)
+fun AuthGate(vm: ChatViewModel) {
+    val err by vm.error.collectAsStateWithLifecycle()
+    val loading by vm.isLoading.collectAsStateWithLifecycle()
+    var showRegister by remember { mutableStateOf(false) }
+
+    if (showRegister) {
+        RegisterScreen(
+            onRegister = vm::register,
+            onToLogin = { showRegister = false; vm.clearError() },
+            error = err, loading = loading
+        )
     } else {
-        LoginScreen(vm::login, { isRegister = true; vm.clearError() }, error, isLoading)
+        LoginScreen(
+            onLogin = vm::login,
+            onToRegister = { showRegister = true; vm.clearError() },
+            error = err, loading = loading
+        )
     }
 }
 
-data class TabItem(val label: String, val icon: ImageVector)
+// ---- Main App (WeChat 4-tab) ----
+data class Tab(val label: String, val icon: ImageVector)
 
 val tabs = listOf(
-    TabItem("微信", Icons.Filled.Chat),
-    TabItem("通讯录", Icons.Filled.People),
-    TabItem("发现", Icons.Filled.Explore),
-    TabItem("我", Icons.Filled.Person)
+    Tab("微信", Icons.AutoMirrored.Filled.Chat),
+    Tab("通讯录", Icons.Filled.People),
+    Tab("发现", Icons.Filled.Explore),
+    Tab("我", Icons.Filled.Person)
 )
 
 @Composable
-fun WechatApp(vm: ChatViewModel) {
-    val tab by vm.selectedTab.collectAsStateWithLifecycle()
+fun MainApp(vm: ChatViewModel) {
+    val tabIdx by vm.tab.collectAsStateWithLifecycle()
     val rooms by vm.rooms.collectAsStateWithLifecycle()
     val friends by vm.friends.collectAsStateWithLifecycle()
-    val friendReqs = vm.friendRequests.collectAsStateWithLifecycle().value
+    val friendReqs by vm.friendReqs.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
-    val currentRoom = vm.currentRoom
-    val currentUserId = vm.userId
 
     var showChat by remember { mutableStateOf(false) }
     var showAddFriend by remember { mutableStateOf(false) }
-    var chatTitle by remember { mutableStateOf("") }
+
+    val isFullScreen = showChat || showAddFriend
 
     Scaffold(
         bottomBar = {
-            if (!showChat && !showAddFriend) {
-                NavigationBar(containerColor = WechatDarkSurface, contentColor = WechatGreen) {
+            if (!isFullScreen) {
+                NavigationBar(containerColor = WxDarkSurface) {
                     tabs.forEachIndexed { i, t ->
                         NavigationBarItem(
-                            selected = tab == i,
+                            selected = tabIdx == i,
                             onClick = { vm.selectTab(i) },
                             icon = { Icon(t.icon, t.label) },
                             label = { Text(t.label, fontSize = 11.sp) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = WechatGreen,
-                                selectedTextColor = WechatGreen,
-                                unselectedIconColor = Color.Gray,
-                                unselectedTextColor = Color.Gray,
-                                indicatorColor = WechatDarkSurface
+                                selectedIconColor = WxGreen, selectedTextColor = WxGreen,
+                                unselectedIconColor = Color.Gray, unselectedTextColor = Color.Gray,
+                                indicatorColor = WxDarkSurface
                             )
                         )
                     }
@@ -98,89 +111,45 @@ fun WechatApp(vm: ChatViewModel) {
         }
     ) { padding ->
         Box(Modifier.padding(padding)) {
-            if (showChat) {
-                ChatDetailScreen(
-                    roomName = chatTitle, messages = messages,
-                    currentUserId = currentUserId,
-                    onBack = { showChat = false; vm.loadAll() },
-                    onSend = { /* TODO: socket send */ }
+            when {
+                showChat -> ChatDetailScreen(
+                    roomName = vm.roomName(), messages = messages, myId = vm.me.id,
+                    onBack = { showChat = false; vm.leaveRoom() },
+                    onSend = { /* TODO: Socket.IO 发送消息 */ }
                 )
-            } else if (showAddFriend) {
-                AddFriendScreen(
-                    vm = vm,
-                    onBack = { showAddFriend = false }
+                showAddFriend -> AddFriendScreen(
+                    onBack = { showAddFriend = false },
+                    onSearch = vm::searchUsers,
+                    onAdd = vm::sendFriendReq
                 )
-            } else {
-                when (tab) {
-                    0 -> ChatListScreen(rooms, friends,
-                        onRoomClick = { id, title ->
-                            chatTitle = title; showChat = true; vm.joinRoom(id)
+                else -> when (tabIdx) {
+                    0 -> ChatListScreen(
+                        rooms = rooms,
+                        friends = friends,
+                        onFriendClick = { f ->
+                            vm.enterRoom(vm.privateRoomId(f.id), f.username)
+                            showChat = true
+                        },
+                        onRoomClick = { r ->
+                            vm.enterRoom(r.room_id, r.room_id)
+                            showChat = true
                         },
                         onAddFriend = { showAddFriend = true }
                     )
                     1 -> ContactsScreen(
                         friends = friends,
-                        friendRequests = friendReqs?.incoming ?: emptyList(),
+                        requests = friendReqs.incoming,
                         onChat = { f ->
-                            val roomId = getPrivateRoomId(f.id.toString(), currentUserId.toString())
-                            chatTitle = f.username; showChat = true; vm.joinRoom(roomId)
+                            vm.enterRoom(vm.privateRoomId(f.id), f.username)
+                            showChat = true
                         },
-                        onAccept = vm::acceptFriend,
-                        onReject = vm::rejectFriend,
-                        onSearch = { q -> vm.searchUsers(q) {} }
+                        onAccept = vm::acceptReq,
+                        onReject = vm::rejectReq,
+                        onSearch = { vm.searchUsers(it) {} }
                     )
                     2 -> DiscoverScreen()
-                    3 -> ProfileScreen(vm.username, vm::logout)
+                    3 -> ProfileScreen(vm.me.username, vm::logout)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun AddFriendScreen(vm: ChatViewModel, onBack: () -> Unit) {
-    var query by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<com.chatapp.data.model.SearchUser>>(emptyList()) }
-    var msg by remember { mutableStateOf("") }
-
-    Column(Modifier.fillMaxSize().background(WechatDarkBg)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, null, tint = Color.White) }
-            Text("添加好友", fontSize = 18.sp, color = Color.White)
-        }
-
-        OutlinedTextField(
-            value = query, onValueChange = {
-                query = it
-                if (it.length >= 2) vm.searchUsers(it) { results = it }
-            },
-            placeholder = { Text("搜索用户名", color = Color.Gray) },
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = WechatGreen, unfocusedBorderColor = Color.Gray,
-                focusedTextColor = Color.White, unfocusedTextColor = Color.White
-            )
-        )
-
-        if (msg.isNotEmpty()) {
-            Text(msg, color = WechatGreen, modifier = Modifier.padding(horizontal = 16.dp))
-        }
-
-        results.forEach { user ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Box(Modifier.size(40.dp).background(Color(0xFF4A90D9), androidx.compose.foundation.shape.CircleShape),
-                    contentAlignment = androidx.compose.ui.Alignment.Center) {
-                    Text(user.username.first().uppercase(), color = Color.White)
-                }
-                Text(user.username, color = Color.White, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                Button(
-                    onClick = { vm.sendFriendRequest(user.id) { ok, m -> msg = m } },
-                    colors = ButtonDefaults.buttonColors(containerColor = WechatGreen)
-                ) { Text("添加", fontSize = 13.sp) }
             }
         }
     }

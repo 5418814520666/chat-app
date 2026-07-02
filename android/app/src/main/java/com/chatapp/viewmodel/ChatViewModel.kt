@@ -11,189 +11,185 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
+class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val authManager = AuthManager(application)
+    private val authMgr = AuthManager(app)
 
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
-    val authState: StateFlow<AuthState> = _authState.asStateFlow()
+    // ---- Auth ----
+    sealed class AuthState { object Checking : AuthState(); object LoggedOut : AuthState(); object LoggedIn : AuthState() }
 
-    private val _loginError = MutableStateFlow<String?>(null)
-    val loginError = _loginError.asStateFlow()
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Checking)
+    val authState: StateFlow<AuthState> = _authState
 
     private val _isLoading = MutableStateFlow(false)
-    val isLoading = _isLoading.asStateFlow()
+    val isLoading: StateFlow<Boolean> = _isLoading
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error
+
+    var me: User = User(); private set
+
+    // ---- Data ----
     private val _rooms = MutableStateFlow<List<RoomInfo>>(emptyList())
-    val rooms = _rooms.asStateFlow()
+    val rooms: StateFlow<List<RoomInfo>> = _rooms
 
     private val _friends = MutableStateFlow<List<User>>(emptyList())
-    val friends = _friends.asStateFlow()
+    val friends: StateFlow<List<User>> = _friends
 
-    private val _friendRequests = MutableStateFlow<FriendRequestsResponse?>(null)
-    val friendRequests = _friendRequests.asStateFlow()
+    private val _friendReqs = MutableStateFlow<FriendRequestsResponse>(FriendRequestsResponse())
+    val friendReqs: StateFlow<FriendRequestsResponse> = _friendReqs
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
-    val messages = _messages.asStateFlow()
+    val messages: StateFlow<List<Message>> = _messages
 
-    private val _currentRoom = MutableStateFlow("general")
-    val currentRoom: String get() = _currentRoom.value
+    // ---- UI State ----
+    private val _tab = MutableStateFlow(0)
+    val tab: StateFlow<Int> = _tab
 
-    private val _selectedTab = MutableStateFlow(0)
-    val selectedTab = _selectedTab.asStateFlow()
+    private val _currentRoomId = MutableStateFlow("")
+    private val _currentRoomName = MutableStateFlow("")
 
-    var userId: Long = 0; private set
-    var username: String = ""; private set
+    val navigatingToChat: Boolean get() = _currentRoomId.value.isNotEmpty()
 
-    init { checkExistingAuth() }
+    init { checkSavedAuth() }
 
-    private fun checkExistingAuth() {
+    private fun checkSavedAuth() {
         viewModelScope.launch {
             try {
-                val t = authManager.tokenFlow.firstOrNull()
-                val uid = authManager.userIdFlow.firstOrNull()
-                val uname = authManager.usernameFlow.firstOrNull()
-                if (t != null && uid != null && uname != null) {
+                val t = authMgr.token.firstOrNull()
+                val id = authMgr.uid.firstOrNull()?.toLongOrNull()
+                val name = authMgr.uname.firstOrNull()
+                if (!t.isNullOrBlank() && id != null && !name.isNullOrBlank()) {
                     ApiClient.token = t
-                    userId = uid.toLong(); username = uname
+                    me = User(id, name)
                     _authState.value = AuthState.LoggedIn
-                    loadAll()
-                } else _authState.value = AuthState.LoggedOut
+                    refresh()
+                } else {
+                    _authState.value = AuthState.LoggedOut
+                }
             } catch (e: Exception) {
-                Log.e("ChatVM", "Auth check: ${e.message}")
+                Log.e("VM", "checkAuth failed", e)
                 _authState.value = AuthState.LoggedOut
             }
         }
     }
 
+    // ---- Login / Register ----
     fun login(username: String, password: String) {
         viewModelScope.launch {
-            _isLoading.value = true; _loginError.value = null
-            try {
-                val res = withContext(Dispatchers.IO) {
-                    ApiClient.apiLogin(username, password)
-                }
-                if (res != null) {
-                    ApiClient.token = res.token
-                    userId = res.user.id; this@ChatViewModel.username = res.user.username
-                    authManager.saveAuth(res.token, userId, username)
-                    _authState.value = AuthState.LoggedIn
-                    loadAll()
-                } else {
-                    _loginError.value = "连接失败，请检查网络"
-                }
-            } catch (e: Exception) {
-                Log.e("ChatVM", "Login: ${e.message}", e)
-                _loginError.value = "连接失败: ${e.localizedMessage}"
-            } finally { _isLoading.value = false }
+            _isLoading.value = true; _error.value = null
+            val r = withContext(Dispatchers.IO) { ApiClient.login(username, password) }
+            _isLoading.value = false
+            if (r.success) {
+                ApiClient.token = r.token
+                me = r.user!!
+                authMgr.save(r.token!!, me.id, me.username)
+                _authState.value = AuthState.LoggedIn
+                refresh()
+            } else {
+                _error.value = r.error
+            }
         }
     }
 
     fun register(username: String, password: String) {
         viewModelScope.launch {
-            _isLoading.value = true; _loginError.value = null
-            try {
-                val res = withContext(Dispatchers.IO) {
-                    ApiClient.apiRegister(username, password)
-                }
-                if (res != null) {
-                    ApiClient.token = res.token
-                    userId = res.user.id; this@ChatViewModel.username = res.user.username
-                    authManager.saveAuth(res.token, userId, username)
-                    _authState.value = AuthState.LoggedIn
-                    loadAll()
-                } else {
-                    _loginError.value = "连接失败，请检查网络"
-                }
-            } catch (e: Exception) {
-                Log.e("ChatVM", "Register: ${e.message}", e)
-                _loginError.value = "连接失败: ${e.localizedMessage}"
-            } finally { _isLoading.value = false }
+            _isLoading.value = true; _error.value = null
+            val r = withContext(Dispatchers.IO) { ApiClient.register(username, password) }
+            _isLoading.value = false
+            if (r.success) {
+                ApiClient.token = r.token
+                me = r.user!!
+                authMgr.save(r.token!!, me.id, me.username)
+                _authState.value = AuthState.LoggedIn
+                refresh()
+            } else {
+                _error.value = r.error
+            }
         }
     }
 
     fun logout() {
-        viewModelScope.launch { authManager.clear() }
-        ApiClient.token = null; userId = 0; username = ""
+        viewModelScope.launch { authMgr.clear() }
+        ApiClient.token = null; me = User()
+        _rooms.value = emptyList(); _friends.value = emptyList()
+        _friendReqs.value = FriendRequestsResponse(); _messages.value = emptyList()
         _authState.value = AuthState.LoggedOut
     }
 
-    fun selectTab(index: Int) { _selectedTab.value = index }
+    fun clearError() { _error.value = null }
 
-    fun joinRoom(roomId: String) {
-        _currentRoom.value = roomId
-        _messages.value = emptyList()
-        viewModelScope.launch {
-            val msgs = withContext(Dispatchers.IO) {
-                if (roomId.startsWith("private_")) {
-                    val parts = roomId.removePrefix("private_").split("_")
-                    val other = parts.firstOrNull { it != userId.toString() }?.toLongOrNull()
-                    other?.let { ApiClient.apiGetPrivateMessages(it) }
-                } else ApiClient.apiGetMessages(roomId)
-            }
-            if (msgs != null) _messages.value = msgs
-        }
+    // ---- Navigation ----
+    fun selectTab(i: Int) { _tab.value = i }
+
+    fun enterRoom(roomId: String, roomName: String) {
+        _currentRoomId.value = roomId
+        _currentRoomName.value = roomName
+        loadMessages(roomId)
     }
 
-    fun loadMessages() {
-        viewModelScope.launch {
-            val room = _currentRoom.value
-            val msgs = withContext(Dispatchers.IO) {
-                if (room.startsWith("private_")) {
-                    val parts = room.removePrefix("private_").split("_")
-                    val other = parts.firstOrNull { it != userId.toString() }?.toLongOrNull()
-                    other?.let { ApiClient.apiGetPrivateMessages(it) }
-                } else ApiClient.apiGetMessages(room)
-            }
-            if (msgs != null) _messages.value = msgs
-        }
+    fun leaveRoom() {
+        _currentRoomId.value = ""
+        _currentRoomName.value = ""
     }
 
-    fun loadAll() {
+    fun roomName(): String = _currentRoomName.value
+
+    // ---- Data loading ----
+    fun refresh() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                _rooms.value = ApiClient.apiGetRooms() ?: emptyList()
-                _friends.value = ApiClient.apiGetFriends() ?: emptyList()
-                _friendRequests.value = ApiClient.apiGetFriendRequests()
+                _rooms.value = ApiClient.getRooms()
+                _friends.value = ApiClient.getFriends()
+                _friendReqs.value = ApiClient.getFriendRequests()
             }
         }
     }
 
-    fun searchUsers(query: String, onResult: (List<SearchUser>) -> Unit) {
+    private fun loadMessages(roomId: String) {
         viewModelScope.launch {
-            val r = withContext(Dispatchers.IO) { ApiClient.apiSearchUsers(query) }
-            onResult(r ?: emptyList())
+            _messages.value = withContext(Dispatchers.IO) {
+                if (roomId.startsWith("private_")) {
+                    val parts = roomId.removePrefix("private_").split("_")
+                    val other = parts.firstOrNull { it != me.id.toString() }?.toLongOrNull()
+                    other?.let { ApiClient.getPrivateMessages(it) } ?: emptyList()
+                } else ApiClient.getMessages(roomId)
+            }
         }
     }
 
-    fun sendFriendRequest(toUserId: Long, onResult: (Boolean, String) -> Unit) {
+    // ---- Friends ----
+    fun searchUsers(q: String, cb: (List<SearchUser>) -> Unit) {
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) { ApiClient.apiSendFriendRequest(toUserId) }
-            onResult(ok, if (ok) "已发送" else "发送失败")
+            cb(withContext(Dispatchers.IO) { ApiClient.searchUsers(q) })
         }
     }
 
-    fun acceptFriend(requestId: Long, fromUserId: Long) {
+    fun sendFriendReq(toUserId: Long, cb: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { ApiClient.apiAcceptFriend(requestId, fromUserId) }
-            loadAll()
+            val ok = withContext(Dispatchers.IO) { ApiClient.sendFriendRequest(toUserId) }
+            cb(ok, if (ok) "已发送" else "发送失败")
         }
     }
 
-    fun rejectFriend(requestId: Long, fromUserId: Long) {
+    fun acceptReq(requestId: Long, fromUserId: Long) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { ApiClient.apiRejectFriend(requestId, fromUserId) }
-            loadAll()
+            withContext(Dispatchers.IO) { ApiClient.acceptFriend(requestId, fromUserId) }
+            refresh()
         }
     }
 
-    fun clearError() { _loginError.value = null }
+    fun rejectReq(requestId: Long, fromUserId: Long) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { ApiClient.rejectFriend(requestId, fromUserId) }
+            refresh()
+        }
+    }
 
-    sealed class AuthState {
-        object Loading : AuthState()
-        object LoggedOut : AuthState()
-        object LoggedIn : AuthState()
+    // ---- Room helper ----
+    fun privateRoomId(other: Long): String {
+        val a = me.id; val b = other
+        return "private_${minOf(a, b)}_${maxOf(a, b)}"
     }
 }

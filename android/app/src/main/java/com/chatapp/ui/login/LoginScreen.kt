@@ -1,5 +1,6 @@
 package com.chatapp.ui.login
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -19,125 +21,150 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.chatapp.ui.theme.WxDarkBg
+import com.chatapp.ui.theme.WxGreen
 
 @Composable
 fun LoginScreen(
     onLogin: (String, String) -> Unit,
-    onSwitchToRegister: () -> Unit,
+    onToRegister: () -> Unit,
     error: String?,
-    isLoading: Boolean
+    loading: Boolean
 ) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    val focusManager = LocalFocusManager.current
+    var u by remember { mutableStateOf("") }
+    var p by remember { mutableStateOf("") }
+    var showPwd by remember { mutableStateOf(false) }
+    val fm = LocalFocusManager.current
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
+        Modifier.fillMaxSize().background(WxDarkBg).padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            "Chat App",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            "登录你的账号",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
+        Text("Chat App", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = WxGreen)
+        Spacer(Modifier.height(4.dp))
+        Text("登录你的账号", color = Color.Gray, fontSize = 14.sp)
+        Spacer(Modifier.height(36.dp))
 
         OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("用户名") },
-            singleLine = true,
+            u, { u = it }, label = { Text("用户名") }, singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-            keyboardActions = KeyboardActions(
-                onNext = { focusManager.moveFocus(FocusDirection.Down) }
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary
-            )
+            keyboardActions = KeyboardActions(onNext = { fm.moveFocus(FocusDirection.Down) }),
+            colors = fieldColors()
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
 
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("密码") },
-            singleLine = true,
+            p, { p = it }, label = { Text("密码") }, singleLine = true,
             modifier = Modifier.fillMaxWidth(),
-            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
-                        imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                        contentDescription = "切换密码可见"
-                    )
+                IconButton(onClick = { showPwd = !showPwd }) {
+                    Icon(if (showPwd) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null, tint = Color.Gray)
                 }
             },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = {
-                    focusManager.clearFocus()
-                    if (username.isNotBlank() && password.isNotBlank()) {
-                        onLogin(username.trim(), password)
-                    }
-                }
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedLabelColor = MaterialTheme.colorScheme.primary
-            )
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                fm.clearFocus()
+                if (u.isNotBlank() && p.isNotBlank()) onLogin(u.trim(), p)
+            }),
+            colors = fieldColors()
         )
+        Spacer(Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (error != null) {
-            Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
+        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        Spacer(Modifier.height(20.dp))
 
         Button(
-            onClick = { onLogin(username.trim(), password) },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            enabled = username.isNotBlank() && password.isNotBlank() && !isLoading,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            onClick = { onLogin(u.trim(), p) },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            enabled = u.isNotBlank() && p.isNotBlank() && !loading,
+            colors = ButtonDefaults.buttonColors(containerColor = WxGreen)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text("登录", fontSize = 16.sp)
-            }
+            if (loading) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+            else Text("登录", fontSize = 16.sp)
         }
+        Spacer(Modifier.height(14.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextButton(onClick = onSwitchToRegister) {
-            Text("没有账号？注册", color = MaterialTheme.colorScheme.primary)
-        }
+        TextButton(onClick = onToRegister) { Text("没有账号？注册", color = WxGreen) }
     }
 }
+
+@Composable
+fun RegisterScreen(
+    onRegister: (String, String) -> Unit,
+    onToLogin: () -> Unit,
+    error: String?,
+    loading: Boolean
+) {
+    var u by remember { mutableStateOf("") }
+    var p by remember { mutableStateOf("") }
+    var showPwd by remember { mutableStateOf(false) }
+    val fm = LocalFocusManager.current
+
+    Column(
+        Modifier.fillMaxSize().background(WxDarkBg).padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text("Chat App", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = WxGreen)
+        Spacer(Modifier.height(4.dp))
+        Text("创建新账号", color = Color.Gray, fontSize = 14.sp)
+        Spacer(Modifier.height(36.dp))
+
+        OutlinedTextField(
+            u, { u = it }, label = { Text("用户名") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { fm.moveFocus(FocusDirection.Down) }),
+            colors = fieldColors()
+        )
+        Spacer(Modifier.height(14.dp))
+
+        OutlinedTextField(
+            p, { p = it }, label = { Text("密码") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (showPwd) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { showPwd = !showPwd }) {
+                    Icon(if (showPwd) Icons.Filled.VisibilityOff else Icons.Filled.Visibility, null, tint = Color.Gray)
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                fm.clearFocus()
+                if (u.isNotBlank() && p.isNotBlank()) onRegister(u.trim(), p)
+            }),
+            colors = fieldColors()
+        )
+        Spacer(Modifier.height(8.dp))
+
+        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        Spacer(Modifier.height(20.dp))
+
+        Button(
+            onClick = { onRegister(u.trim(), p) },
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            enabled = u.isNotBlank() && p.isNotBlank() && !loading,
+            colors = ButtonDefaults.buttonColors(containerColor = WxGreen)
+        ) {
+            if (loading) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+            else Text("注册", fontSize = 16.sp)
+        }
+        Spacer(Modifier.height(14.dp))
+
+        TextButton(onClick = onToLogin) { Text("已有账号？登录", color = WxGreen) }
+    }
+}
+
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = WxGreen,
+    unfocusedBorderColor = Color(0xFF555555),
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedLabelColor = WxGreen,
+    unfocusedLabelColor = Color.Gray,
+    cursorColor = WxGreen
+)

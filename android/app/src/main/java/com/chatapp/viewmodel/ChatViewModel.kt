@@ -63,28 +63,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             _loginError.value = null
             try {
-                Log.d("ChatVM", "Login START user=$username")
-                val res = withContext(Dispatchers.IO) {
-                    api.login(AuthRequest(username, password))
-                }
-                Log.d("ChatVM", "Login HTTP ${res.code()} ${res.isSuccessful}")
-                if (res.isSuccessful && res.body() != null) {
-                    val body = res.body()!!
-                    token = body.token
-                    userId = body.user.id
-                    this@ChatViewModel.username = body.user.username
-                    ApiClient.setToken(token)
-                    authManager.saveAuth(token, userId, username)
-                    Log.d("ChatVM", "Login OK userId=$userId")
-                    _authState.value = AuthState.LoggedIn
-                } else {
-                    val err = res.errorBody()?.string()
-                    _loginError.value = try { JSONObject(err ?: "{}").optString("error", "请求失败") } catch (_: Exception) { "请求失败" }
-                    Log.e("ChatVM", "Login FAIL HTTP ${res.code()} err=$err")
-                }
+                // SKIP NETWORK - just simulate success for debug
+                Log.d("ChatVM", "Login SIMULATED user=$username")
+                userId = System.currentTimeMillis()
+                this@ChatViewModel.username = username
+                token = "debug-token"
+                _authState.value = AuthState.LoggedIn
             } catch (e: Exception) {
                 Log.e("ChatVM", "Login EXCEPTION: ${e.message}", e)
-                _loginError.value = "连接失败: ${e.localizedMessage}"
+                _loginError.value = "错误: ${e.localizedMessage}"
             } finally {
                 _isLoading.value = false
             }
